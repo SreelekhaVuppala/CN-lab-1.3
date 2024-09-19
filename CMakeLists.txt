@@ -3,4 +3,6 @@ project(CN_lab_1_3)
 
 set(CMAKE_CXX_STANDARD 26)
 
-add_executable(CN_lab_1_3 main.cpp)
+add_executable(CN_lab_1_3 main.cpp
+        server-io-multiplexing-skeleton.cpp
+        server-iterative.cpp)

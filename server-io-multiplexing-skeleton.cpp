@@ -160,13 +160,14 @@ int main( int argc, char* argv[] )
 	// TODO: declare a data structure that will keep track of one ConnectionData 
 	// struct for each open connection. E.g. you can use a vector (see Appendix E 
 	// on the lab manual).
-
+	std::vector<ConnectionData> connections;
 
 	// loop forever
 	while( 1 )
 	{
 
 		fd_set readfds, writefds;
+		int nfds = 0; //To keep  track of maximum VALUE of all tracked file descriptors.
 
 		FD_ZERO( &readfds );
 		FD_ZERO( &writefds );
@@ -174,19 +175,33 @@ int main( int argc, char* argv[] )
 
 		// TODO: add listenfd to readfds.
 		// NOTE: check for FD_SET() in the man page of select().
+		FD_SET(listenfd, &readfds); // To add listenfd in readfds set.
+		nfds = nfds > listenfd ? nfds : listenfd;
 
 		// TODO: loop through all open connections (which you have stored in data structre, e.g. a vector) 
 		// and add them in readfds or writefds.
 		// NOTE: How to know if a socket should be added in readfds or writefds? Check the "state"
 		// field of ConnectionData for that socket.
-
 		
+		for(size_t i = 0; i < connections.size(); ++i )
+		{
+			ConnectionData d = connections[i]; 
+
+			if(d.state == eConnStateReceiving) {
+				FD_SET(d.sock, &readfds);
+			}
+			else if(d.state == eConnStateSending) {
+				FD_SET(d.sock, &writefds);
+			}
+
+			nfds = nfds > d.sock ? nfds : d.sock;
+		}
 		
 		// wait for an event using select()
 		// NOTE 1: we only need one call to select() throughout our program.
 		// NOTE 2: pay attention to the first arguement of select. It should be the 
 		// maximum VALUE of all tracked file descriptors + 1.
-		int ret = select( arg1, arg2, arg3, 0, 0 );
+		int ret = select(nfds + 1, &readfds, &writefds, 0, 0);
 		
 
 		if( -1 == ret )
@@ -236,17 +251,38 @@ int main( int argc, char* argv[] )
 			connData.sock = clientfd;
 			connData.state = eConnStateReceiving;
 
-
 			// TODO: add connData in your data structure so that you can keep track of that socket.
+			connections.push_back( connData );
 		}
-
 		// TODO: loop through your open sockets.
 		// For each socket: 
-		// 1) Use FD_ISSET to check if the socket is in the readfds or the writefds set, after the return of select(). 
+		//1) Use FD_ISSET to check if the socket is in the readfds or the writefds set, after the return of select(). 
 		// 2) If it is in the readfds set, receive data from that socket, using process_client_recv().
 		// 3) If it is in the writefds set, write send to that socket, using process_client_send().
+		for( size_t i = 0; i < connections.size(); ++i )
+		{	
+			if(FD_ISSET(connections[i].sock, &readfds)) {
+				if(!process_client_recv(connections[i])) {
+					connections[i].sock = -1;
+				}
+			}
+			else if(FD_ISSET(connections[i].sock, &writefds) ) {
+				if(!process_client_send(connections[i])) {
+					connections[i].sock = -1;
+				}
+			}
+		}
+
+		
+		
 		// 4) Close and remove sockets if their connection was terminated.
 
+		connections.erase(
+			std::remove_if(
+				connections.begin(), connections.end(), &is_invalid_connection
+			),
+			connections.end()
+		);
 
 	}
 
@@ -264,7 +300,6 @@ static bool process_client_recv( ConnectionData& cd )
 
 	// receive from socket
 	ssize_t ret = recv( cd.sock, cd.buffer, kTransferBufferSize, 0 );
-
 	if( 0 == ret )
 	{
 #		if VERBOSE
